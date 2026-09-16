@@ -8,7 +8,7 @@ struct ContentView: View {
             FeedSidebar()
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
-            FeedDetailPlaceholder()
+            FeedDetailView()
         }
         .toolbar {
             ToolbarItemGroup {
@@ -18,10 +18,17 @@ struct ContentView: View {
                     Label("Add Feed", systemImage: "plus")
                 }
                 Button {
-                    appState.reload()
+                    appState.refreshAll()
                 } label: {
-                    Label("Reload", systemImage: "arrow.clockwise")
+                    if appState.isRefreshing {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
                 }
+                .disabled(appState.isRefreshing || appState.feeds.isEmpty)
+                .help("Fetch and parse all subscribed feeds")
             }
         }
         .sheet(isPresented: $appState.presentAddFeed) {
@@ -45,7 +52,10 @@ private struct FeedSidebar: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        List(selection: $appState.selectedFeedID) {
+        List(selection: Binding(
+            get: { appState.selectedFeedID },
+            set: { appState.selectFeed(id: $0) }
+        )) {
             Section("Subscriptions") {
                 ForEach(appState.feeds) { feed in
                     VStack(alignment: .leading, spacing: 2) {
@@ -85,23 +95,69 @@ private struct FeedSidebar: View {
     }
 }
 
-private struct FeedDetailPlaceholder: View {
+private struct FeedDetailView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
         if let id = appState.selectedFeedID,
            let feed = appState.feeds.first(where: { $0.id == id }) {
             VStack(alignment: .leading, spacing: 12) {
-                Text(feed.title.isEmpty ? "Untitled feed" : feed.title)
-                    .font(.title2.weight(.semibold))
+                HStack(alignment: .firstTextBaseline) {
+                    Text(feed.title.isEmpty ? "Untitled feed" : feed.title)
+                        .font(.title2.weight(.semibold))
+                    Spacer()
+                    if let summary = appState.lastRefreshSummary {
+                        Text(summary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 LabeledContent("Feed URL", value: feed.url)
                 if let site = feed.siteURL, !site.isEmpty {
                     LabeledContent("Site", value: site)
                 }
-                Text("Unread-first item list and fetch arrive in later work items. This build covers local feed CRUD + SQLite store.")
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
-                Spacer()
+
+                Divider()
+
+                Text("Items")
+                    .font(.headline)
+
+                if appState.items.isEmpty {
+                    Text("No items yet. Press Refresh to fetch this feed.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    List(appState.items) { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(item.title)
+                                    .font(.body.weight(item.isRead ? .regular : .semibold))
+                                    .lineLimit(2)
+                                if !item.isRead {
+                                    Text("NEW")
+                                        .font(.caption2.weight(.bold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.accentColor.opacity(0.15))
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            if let link = item.link {
+                                Text(link)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            if let published = item.publishedAt {
+                                Text(published.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .listStyle(.inset)
+                }
+                Spacer(minLength: 0)
             }
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

@@ -135,6 +135,30 @@ public final class FeedStore: @unchecked Sendable {
         return rows
     }
 
+    public func setItemRead(id: String, isRead: Bool) throws {
+        let sql = "UPDATE items SET is_read = ? WHERE id = ?;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw FeedStoreError.prepareFailed(errmsg())
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int(stmt, 1, isRead ? 1 : 0)
+        bindText(stmt, 2, id)
+        guard sqlite3_step(stmt) == SQLITE_DONE else { throw FeedStoreError.stepFailed(errmsg()) }
+        if sqlite3_changes(db) == 0 { throw FeedStoreError.notFound }
+    }
+
+    public func itemExists(id: String) throws -> Bool {
+        let sql = "SELECT 1 FROM items WHERE id = ? LIMIT 1;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw FeedStoreError.prepareFailed(errmsg())
+        }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, id)
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
     @discardableResult
     public func upsertItem(_ item: FeedItem) throws -> FeedItem {
         let sql = """
@@ -144,8 +168,7 @@ public final class FeedStore: @unchecked Sendable {
           title = excluded.title,
           link = excluded.link,
           summary = excluded.summary,
-          published_at = excluded.published_at,
-          is_read = excluded.is_read;
+          published_at = excluded.published_at;
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {

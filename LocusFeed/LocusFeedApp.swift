@@ -31,7 +31,7 @@ struct LocusFeedApp: App {
             Form {
                 Text("LocusFeed — unread-first RSS for macOS 15+")
                     .font(.body)
-                Text("Fetch / mark-read arrive in later work items.")
+                Text("Mark-all-read and unread machine arrive in later work items.")
                     .foregroundStyle(.secondary)
             }
             .padding()
