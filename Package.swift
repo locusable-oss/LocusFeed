@@ -8,7 +8,11 @@ let package = Package(
         .library(name: "LocusFeedCore", targets: ["LocusFeedCore"]),
     ],
     targets: [
-        .target(name: "LocusFeedCore", path: "Sources/LocusFeedCore"),
+        .target(
+            name: "LocusFeedCore",
+            path: "Sources/LocusFeedCore",
+            linkerSettings: [.linkedLibrary("sqlite3")]
+        ),
         .testTarget(name: "LocusFeedCoreTests", dependencies: ["LocusFeedCore"], path: "Tests/LocusFeedCoreTests"),
     ]
 )
