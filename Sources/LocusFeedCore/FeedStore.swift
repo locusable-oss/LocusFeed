@@ -114,15 +114,16 @@ public final class FeedStore: @unchecked Sendable {
         try exec("DELETE FROM feeds WHERE id = '\(escape(id))';")
     }
 
-    // MARK: - Items (model + insert for later fetch sorts)
+    // MARK: - Items
 
+    /// Unread-first list: unread (`is_read = 0`) then newest by published/created.
     public func listItems(feedID: String? = nil, unreadOnly: Bool = false) throws -> [FeedItem] {
         var sql = "SELECT id, feed_id, title, link, summary, published_at, is_read, created_at FROM items"
         var clauses: [String] = []
         if let feedID { clauses.append("feed_id = '\(escape(feedID))'") }
         if unreadOnly { clauses.append("is_read = 0") }
         if !clauses.isEmpty { sql += " WHERE " + clauses.joined(separator: " AND ") }
-        sql += " ORDER BY COALESCE(published_at, created_at) DESC;"
+        sql += " ORDER BY is_read ASC, COALESCE(published_at, created_at) DESC;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             throw FeedStoreError.prepareFailed(errmsg())
@@ -133,6 +134,18 @@ public final class FeedStore: @unchecked Sendable {
             rows.append(item(from: stmt!))
         }
         return rows
+    }
+
+    public func item(id: String) throws -> FeedItem? {
+        let sql = "SELECT id, feed_id, title, link, summary, published_at, is_read, created_at FROM items WHERE id = ? LIMIT 1;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw FeedStoreError.prepareFailed(errmsg())
+        }
+        defer { sqlite3_finalize(stmt) }
+        bindText(stmt, 1, id)
+        if sqlite3_step(stmt) == SQLITE_ROW { return item(from: stmt!) }
+        return nil
     }
 
     public func setItemRead(id: String, isRead: Bool) throws {
@@ -148,6 +161,30 @@ public final class FeedStore: @unchecked Sendable {
         if sqlite3_changes(db) == 0 { throw FeedStoreError.notFound }
     }
 
+    /// Mark every item in a feed (or all feeds when `feedID` is nil) as read.
+    public func markAllRead(feedID: String? = nil) throws {
+        if let feedID {
+            try exec("UPDATE items SET is_read = 1 WHERE feed_id = '\(escape(feedID))' AND is_read = 0;")
+        } else {
+            try exec("UPDATE items SET is_read = 1 WHERE is_read = 0;")
+        }
+    }
+
+    public func unreadCount(feedID: String? = nil) throws -> Int {
+        var sql = "SELECT COUNT(*) FROM items WHERE is_read = 0"
+        if let feedID {
+            sql += " AND feed_id = '\(escape(feedID))'"
+        }
+        sql += ";"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw FeedStoreError.prepareFailed(errmsg())
+        }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+        return Int(sqlite3_column_int(stmt, 0))
+    }
+
     public func itemExists(id: String) throws -> Bool {
         let sql = "SELECT 1 FROM items WHERE id = ? LIMIT 1;"
         var stmt: OpaquePointer?
@@ -161,6 +198,7 @@ public final class FeedStore: @unchecked Sendable {
 
     @discardableResult
     public func upsertItem(_ item: FeedItem) throws -> FeedItem {
+        // ON CONFLICT preserves is_read so refresh never clobbers the read machine.
         let sql = """
         INSERT INTO items (id, feed_id, title, link, summary, published_at, is_read, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)

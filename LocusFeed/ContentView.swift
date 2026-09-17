@@ -6,9 +6,12 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             FeedSidebar()
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+                .navigationSplitViewColumnWidth(min: 160, ideal: 200, max: 280)
+        } content: {
+            ItemListPane()
+                .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 420)
         } detail: {
-            FeedDetailView()
+            ItemDetailView()
         }
         .toolbar {
             ToolbarItemGroup {
@@ -17,6 +20,7 @@ struct ContentView: View {
                 } label: {
                     Label("Add Feed", systemImage: "plus")
                 }
+
                 Button {
                     appState.refreshAll()
                 } label: {
@@ -29,6 +33,22 @@ struct ContentView: View {
                 }
                 .disabled(appState.isRefreshing || appState.feeds.isEmpty)
                 .help("Fetch and parse all subscribed feeds")
+
+                Button {
+                    appState.markSelectedFeedAllRead()
+                } label: {
+                    Label("Mark Feed Read", systemImage: "checkmark.circle")
+                }
+                .disabled(appState.selectedFeedID == nil || appState.items.allSatisfy(\.isRead))
+                .help("Mark all items in the selected feed as read")
+
+                Button {
+                    appState.markAllFeedsRead()
+                } label: {
+                    Label("Mark All Read", systemImage: "checkmark.circle.fill")
+                }
+                .disabled(appState.feeds.isEmpty)
+                .help("Mark every item in every feed as read")
             }
         }
         .sheet(isPresented: $appState.presentAddFeed) {
@@ -48,6 +68,8 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Sidebar (feeds)
+
 private struct FeedSidebar: View {
     @EnvironmentObject private var appState: AppState
 
@@ -58,18 +80,25 @@ private struct FeedSidebar: View {
         )) {
             Section("Subscriptions") {
                 ForEach(appState.feeds) { feed in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(feed.title.isEmpty ? feed.url : feed.title)
-                            .font(.body.weight(.medium))
-                            .lineLimit(1)
-                        Text(feed.url)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(feed.title.isEmpty ? feed.url : feed.title)
+                                .font(.body.weight(.medium))
+                                .lineLimit(1)
+                            Text(feed.url)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
                     }
                     .tag(feed.id)
                     .contextMenu {
                         Button("Edit…") { appState.editingFeed = feed }
+                        Button("Mark Feed Read") {
+                            appState.selectFeed(id: feed.id)
+                            appState.markSelectedFeedAllRead()
+                        }
                         Button("Delete", role: .destructive) {
                             appState.deleteFeed(id: feed.id)
                         }
@@ -83,6 +112,7 @@ private struct FeedSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .navigationTitle("LocusFeed")
         .overlay {
             if appState.feeds.isEmpty {
                 ContentUnavailableView(
@@ -95,78 +125,95 @@ private struct FeedSidebar: View {
     }
 }
 
-private struct FeedDetailView: View {
+// MARK: - Item list (unread-first)
+
+private struct ItemListPane: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        if let id = appState.selectedFeedID,
-           let feed = appState.feeds.first(where: { $0.id == id }) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(feed.title.isEmpty ? "Untitled feed" : feed.title)
-                        .font(.title2.weight(.semibold))
-                    Spacer()
-                    if let summary = appState.lastRefreshSummary {
-                        Text(summary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                LabeledContent("Feed URL", value: feed.url)
-                if let site = feed.siteURL, !site.isEmpty {
-                    LabeledContent("Site", value: site)
-                }
-
-                Divider()
-
-                Text("Items")
-                    .font(.headline)
-
-                if appState.items.isEmpty {
-                    Text("No items yet. Press Refresh to fetch this feed.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    List(appState.items) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(item.title)
-                                    .font(.body.weight(item.isRead ? .regular : .semibold))
-                                    .lineLimit(2)
-                                if !item.isRead {
-                                    Text("NEW")
-                                        .font(.caption2.weight(.bold))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color.accentColor.opacity(0.15))
-                                        .clipShape(Capsule())
+        Group {
+            if let feed = appState.selectedFeed {
+                List(selection: Binding(
+                    get: { appState.selectedItemID },
+                    set: { appState.selectItem(id: $0) }
+                )) {
+                    Section {
+                        ForEach(appState.items) { item in
+                            ItemRow(item: item)
+                                .tag(item.id)
+                                .contextMenu {
+                                    Button(item.isRead ? "Mark Unread" : "Mark Read") {
+                                        appState.toggleItemRead(id: item.id)
+                                    }
                                 }
-                            }
-                            if let link = item.link {
-                                Text(link)
+                        }
+                    } header: {
+                        HStack {
+                            Text(feed.title.isEmpty ? "Untitled feed" : feed.title)
+                            Spacer()
+                            let unread = appState.items.filter { !$0.isRead }.count
+                            if unread > 0 {
+                                Text("\(unread) unread")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                    .lineLimit(1)
                             }
-                            if let published = item.publishedAt {
-                                Text(published.formatted(date: .abbreviated, time: .shortened))
+                            if let summary = appState.lastRefreshSummary {
+                                Text(summary)
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)
                             }
                         }
-                        .padding(.vertical, 2)
                     }
-                    .listStyle(.inset)
                 }
-                Spacer(minLength: 0)
+                .listStyle(.inset)
+                .overlay {
+                    if appState.items.isEmpty {
+                        ContentUnavailableView(
+                            "No items yet",
+                            systemImage: "tray",
+                            description: Text("Press Refresh to fetch this feed.")
+                        )
+                    }
+                }
+            } else {
+                ContentUnavailableView(
+                    "Select a feed",
+                    systemImage: "sidebar.left",
+                    description: Text("Choose a subscription from the sidebar.")
+                )
             }
-            .padding(24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        } else {
-            ContentUnavailableView(
-                "Select a feed",
-                systemImage: "sidebar.left",
-                description: Text("Choose a subscription or add a new one.")
-            )
         }
+        .navigationTitle(appState.selectedFeed.map { $0.title.isEmpty ? "Feed" : $0.title } ?? "Items")
+    }
+}
+
+private struct ItemRow: View {
+    let item: FeedItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if !item.isRead {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 7, height: 7)
+                }
+                Text(item.title)
+                    .font(.body.weight(item.isRead ? .regular : .semibold))
+                    .foregroundStyle(item.isRead ? .secondary : .primary)
+                    .lineLimit(2)
+            }
+            if let published = item.publishedAt {
+                Text(published.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            } else if let link = item.link {
+                Text(link)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }

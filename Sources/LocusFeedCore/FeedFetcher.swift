@@ -133,6 +133,23 @@ public struct FeedFetcher: Sendable {
         let parser = FeedXMLParser()
         return try parser.parse(data: data)
     }
+
+    /// Refresh every feed in `feeds`, aggregating insert/update counts and per-feed failures.
+    public func refreshAll(feeds: [Feed], store: FeedStore) async -> (inserted: Int, updated: Int, failures: [(feed: Feed, message: String)]) {
+        var insertedTotal = 0
+        var updatedTotal = 0
+        var failures: [(feed: Feed, message: String)] = []
+        for feed in feeds {
+            do {
+                let result = try await fetchAndStore(feed: feed, store: store)
+                insertedTotal += result.insertedCount
+                updatedTotal += result.updatedCount
+            } catch {
+                failures.append((feed, error.localizedDescription))
+            }
+        }
+        return (insertedTotal, updatedTotal, failures)
+    }
 }
 
 // MARK: - XML
