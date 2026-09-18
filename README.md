@@ -1,7 +1,8 @@
 # LocusFeed
 
-Native macOS RSS/Atom client: unread-first feed list, clear hierarchy, one-tap mark-all-read.
+Native macOS RSS/Atom client: unread-first feed list, source-level unread counts, one-tap mark-all-read.
 
 GPL-3.0 — Copyright (C) 2026 Locusable Studio.
 
-Build: see `ACCEPTANCE.md` (`make generate && make build` on a Mac with Xcode). Requires macOS 15+.
+- Linux: `make self-check` (static, no Xcode, no tag).
+- macOS 15+: `make generate && make build` for an unsigned Debug app. Checklist: `docs/checklist.md`.
