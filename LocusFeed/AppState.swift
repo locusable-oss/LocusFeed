@@ -13,6 +13,8 @@ final class AppState: ObservableObject {
     @Published var isRefreshing = false
     @Published var lastRefreshSummary: String?
     @Published var refreshIntervalMinutes: Int = AppSettings.refreshIntervalMinutes
+    /// Source-level unread counts. Missing key means zero unread for that feed.
+    @Published var unreadByFeed: [String: Int] = [:]
 
     private var store: FeedStore?
     private let fetcher = FeedFetcher()
@@ -26,6 +28,14 @@ final class AppState: ObservableObject {
     var selectedFeed: Feed? {
         guard let selectedFeedID else { return nil }
         return feeds.first(where: { $0.id == selectedFeedID })
+    }
+
+    var totalUnread: Int {
+        unreadByFeed.values.reduce(0, +)
+    }
+
+    func unreadCount(for feedID: String) -> Int {
+        unreadByFeed[feedID] ?? 0
     }
 
     init() {
@@ -58,6 +68,16 @@ final class AppState: ObservableObject {
                 selectedFeedID = feeds.first?.id
             }
             reloadItems()
+            refreshUnreadCounts()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func refreshUnreadCounts() {
+        guard let store else { return }
+        do {
+            unreadByFeed = try store.unreadCountsByFeed()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -129,6 +149,7 @@ final class AppState: ObservableObject {
         guard let store else { return }
         do {
             try store.setItemRead(id: id, isRead: isRead)
+            refreshUnreadCounts()
             if let idx = items.firstIndex(where: { $0.id == id }) {
                 items[idx].isRead = isRead
                 // Keep unread-first ordering in the UI list.
@@ -155,6 +176,7 @@ final class AppState: ObservableObject {
         do {
             try store.markAllRead(feedID: feedID)
             reloadItems()
+            refreshUnreadCounts()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -166,6 +188,7 @@ final class AppState: ObservableObject {
         do {
             try store.markAllRead(feedID: nil)
             reloadItems()
+            refreshUnreadCounts()
         } catch {
             errorMessage = error.localizedDescription
         }

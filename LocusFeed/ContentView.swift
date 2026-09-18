@@ -78,12 +78,14 @@ private struct FeedSidebar: View {
             get: { appState.selectedFeedID },
             set: { appState.selectFeed(id: $0) }
         )) {
-            Section("Subscriptions") {
+            Section {
                 ForEach(appState.feeds) { feed in
+                    let unread = appState.unreadCount(for: feed.id)
+                    let title = feed.title.isEmpty ? feed.url : feed.title
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(feed.title.isEmpty ? feed.url : feed.title)
-                                .font(.body.weight(.medium))
+                            Text(title)
+                                .font(.body.weight(unread > 0 ? .semibold : .medium))
                                 .lineLimit(1)
                             Text(feed.url)
                                 .font(.caption)
@@ -92,6 +94,8 @@ private struct FeedSidebar: View {
                         }
                         Spacer(minLength: 0)
                     }
+                    .badge(unread > 0 ? Text("\(unread)") : nil)
+                    .accessibilityLabel(unread > 0 ? "\(title), \(unread) unread" : title)
                     .tag(feed.id)
                     .contextMenu {
                         Button("Edit…") { appState.editingFeed = feed }
@@ -107,6 +111,18 @@ private struct FeedSidebar: View {
                 .onDelete { indexSet in
                     for i in indexSet {
                         appState.deleteFeed(id: appState.feeds[i].id)
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Subscriptions")
+                    Spacer(minLength: 8)
+                    if appState.totalUnread > 0 {
+                        Text("\(appState.totalUnread)")
+                            .font(.caption.weight(.semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("\(appState.totalUnread) unread")
                     }
                 }
             }
@@ -151,7 +167,7 @@ private struct ItemListPane: View {
                         HStack {
                             Text(feed.title.isEmpty ? "Untitled feed" : feed.title)
                             Spacer()
-                            let unread = appState.items.filter { !$0.isRead }.count
+                            let unread = appState.unreadCount(for: feed.id)
                             if unread > 0 {
                                 Text("\(unread) unread")
                                     .font(.caption)

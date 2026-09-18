@@ -67,4 +67,29 @@ final class FeedStoreTests: XCTestCase {
         XCTAssertEqual(try store.unreadCount(feedID: nil), 0)
         XCTAssertTrue(try store.listItems().allSatisfy(\.isRead))
     }
+
+    func testUnreadCountsByFeedOmitsZero() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try FeedStore(directory: dir)
+        let f1 = try store.addFeed(title: "One", url: "https://example.com/1.xml")
+        let f2 = try store.addFeed(title: "Two", url: "https://example.com/2.xml")
+        let f3 = try store.addFeed(title: "Quiet", url: "https://example.com/3.xml")
+        _ = try store.upsertItem(FeedItem(id: "i1", feedID: f1.id, title: "I1", isRead: false))
+        _ = try store.upsertItem(FeedItem(id: "i2", feedID: f1.id, title: "I2", isRead: false))
+        _ = try store.upsertItem(FeedItem(id: "i3", feedID: f2.id, title: "I3", isRead: true))
+        _ = try store.upsertItem(FeedItem(id: "i4", feedID: f2.id, title: "I4", isRead: false))
+        _ = f3
+
+        let counts = try store.unreadCountsByFeed()
+        XCTAssertEqual(counts[f1.id], 2)
+        XCTAssertEqual(counts[f2.id], 1)
+        XCTAssertNil(counts[f3.id])
+        XCTAssertEqual(counts.values.reduce(0, +), try store.unreadCount())
+
+        try store.setItemRead(id: "i4", isRead: true)
+        let after = try store.unreadCountsByFeed()
+        XCTAssertNil(after[f2.id])
+        XCTAssertEqual(after[f1.id], 2)
+    }
 }

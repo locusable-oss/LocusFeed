@@ -185,6 +185,26 @@ public final class FeedStore: @unchecked Sendable {
         return Int(sqlite3_column_int(stmt, 0))
     }
 
+    /// Unread counts keyed by feed id. Feeds with zero unread items are omitted
+    /// so the sidebar can render source-level badges without scanning every row.
+    public func unreadCountsByFeed() throws -> [String: Int] {
+        let sql = "SELECT feed_id, COUNT(*) FROM items WHERE is_read = 0 GROUP BY feed_id;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw FeedStoreError.prepareFailed(errmsg())
+        }
+        defer { sqlite3_finalize(stmt) }
+        var counts: [String: Int] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let feedID = text(stmt!, 0)
+            let count = Int(sqlite3_column_int(stmt!, 1))
+            if count > 0, !feedID.isEmpty {
+                counts[feedID] = count
+            }
+        }
+        return counts
+    }
+
     public func itemExists(id: String) throws -> Bool {
         let sql = "SELECT 1 FROM items WHERE id = ? LIMIT 1;"
         var stmt: OpaquePointer?
