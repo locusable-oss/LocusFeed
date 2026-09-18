@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -8,8 +8,10 @@ let package = Package(
         .library(name: "LocusFeedCore", targets: ["LocusFeedCore"]),
     ],
     targets: [
+        .systemLibrary(name: "CSQLite", path: "Sources/CSQLite"),
         .target(
             name: "LocusFeedCore",
+            dependencies: ["CSQLite"],
             path: "Sources/LocusFeedCore",
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),

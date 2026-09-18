@@ -35,7 +35,7 @@ struct FeedEditorSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Button(saveLabel) { save() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!Self.isHTTPSURL(url.trimmingCharacters(in: .whitespacesAndNewlines)))
             }
         }
         .padding(20)
@@ -71,6 +71,15 @@ struct FeedEditorSheet: View {
         let s = siteURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let site = s.isEmpty ? nil : s
 
+        guard Self.isHTTPSURL(u) else {
+            appState.errorMessage = "Feed URL must be a valid HTTPS address."
+            return
+        }
+        if let site, !Self.isHTTPSURL(site) {
+            appState.errorMessage = "Site URL must be HTTPS when provided."
+            return
+        }
+
         switch mode {
         case .add:
             let display = t.isEmpty ? u : t
@@ -82,5 +91,12 @@ struct FeedEditorSheet: View {
             appState.updateFeed(feed)
         }
         dismiss()
+    }
+
+    private static func isHTTPSURL(_ raw: String) -> Bool {
+        guard let url = URL(string: raw), let scheme = url.scheme?.lowercased(), let host = url.host else {
+            return false
+        }
+        return scheme == "https" && !host.isEmpty
     }
 }

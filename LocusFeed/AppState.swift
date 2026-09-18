@@ -316,9 +316,21 @@ final class AppState: ObservableObject {
         case .refreshOnLaunch:
             refreshAll()
         case .focusFirstUnread:
-            if let id = feeds.first(where: { unreadCount(for: $0.id) > 0 })?.id, id != selectedFeedID {
-                selectFeed(id: id)
-            }
+            focusFirstUnreadItem()
+        }
+    }
+
+    /// Jump to the first feed that still has unread items and highlight the newest unread
+    /// row without marking it read (selectItem would mark it).
+    private func focusFirstUnreadItem() {
+        guard let feedID = feeds.first(where: { unreadCount(for: $0.id) > 0 })?.id else { return }
+        if feedID != selectedFeedID {
+            selectedFeedID = feedID
+            selectedItemID = nil
+            reloadItems()
+        }
+        if let unreadID = items.first(where: { !$0.isRead })?.id {
+            selectedItemID = unreadID
         }
     }
 

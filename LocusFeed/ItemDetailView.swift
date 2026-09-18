@@ -10,11 +10,14 @@ struct ItemDetailView: View {
         if let item = appState.selectedItem {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .firstTextBaseline) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text(item.title)
                             .font(.title2.weight(.semibold))
                             .textSelection(.enabled)
-                        Spacer()
+                            .lineLimit(3)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Button {
                             appState.toggleItemRead(id: item.id)
                         } label: {
@@ -23,6 +26,7 @@ struct ItemDetailView: View {
                                 systemImage: item.isRead ? "circle" : "checkmark.circle"
                             )
                         }
+                        .fixedSize()
                         .help(item.isRead ? "Mark this item unread" : "Mark this item read")
                     }
 
@@ -151,12 +155,39 @@ private struct SimpleHTMLWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = false
+        config.preferences.javaScriptCanOpenWindowsAutomatically = false
         let view = WKWebView(frame: .zero, configuration: config)
         view.setValue(false, forKey: "drawsBackground")
+        view.navigationDelegate = context.coordinator
         return view
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
+        nsView.navigationDelegate = context.coordinator
         nsView.loadHTMLString(html, baseURL: nil)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            // Allow the initial about:blank / html string load; block anything else that is not HTTPS.
+            if navigationAction.navigationType == .other && navigationAction.request.url?.scheme == nil {
+                decisionHandler(.allow)
+                return
+            }
+            let scheme = navigationAction.request.url?.scheme?.lowercased()
+            if scheme == "about" || scheme == "https" {
+                decisionHandler(.allow)
+            } else {
+                decisionHandler(.cancel)
+            }
+        }
     }
 }

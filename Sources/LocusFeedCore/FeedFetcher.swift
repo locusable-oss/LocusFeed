@@ -1,4 +1,10 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 
 public enum FeedFetcherError: Error, LocalizedError, Equatable {
     case invalidURL(String)
@@ -312,7 +318,7 @@ private final class FeedXMLParser: NSObject, XMLParserDelegate {
         resetItem()
     }
 
-    private static let rssDateFormatters: [DateFormatter] = {
+    nonisolated(unsafe) private static let rssDateFormatters: [DateFormatter] = {
         let formats = [
             "EEE, dd MMM yyyy HH:mm:ss Z",
             "EEE, dd MMM yyyy HH:mm:ss zzz",
@@ -333,13 +339,13 @@ private final class FeedXMLParser: NSObject, XMLParserDelegate {
         return nil
     }
 
-    private static let isoFractional: ISO8601DateFormatter = {
+    nonisolated(unsafe) private static let isoFractional: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 
-    private static let isoBasic: ISO8601DateFormatter = {
+    nonisolated(unsafe) private static let isoBasic: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f

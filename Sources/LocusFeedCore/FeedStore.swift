@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 
 public enum FeedStoreError: Error, LocalizedError {
     case openFailed(String)
@@ -108,10 +112,11 @@ public final class FeedStore: @unchecked Sendable {
         if sqlite3_changes(db) == 0 { throw FeedStoreError.notFound }
     }
 
-    public func deleteFeed(id: String) throws {
-        // Cascade items first (explicit; also covered by FK if enabled)
-        try exec("DELETE FROM items WHERE feed_id = '\(escape(id))';")
-        try exec("DELETE FROM feeds WHERE id = '\(escape(id))';")
+        public func deleteFeed(id: String) throws {
+        // Cascade items first (explicit; also covered by FK if enabled).
+        // Bound parameters avoid relying on string escaping for identifiers.
+        try run("DELETE FROM items WHERE feed_id = ?;", bind: [id])
+        try run("DELETE FROM feeds WHERE id = ?;", bind: [id])
     }
 
     // MARK: - Items
@@ -120,7 +125,7 @@ public final class FeedStore: @unchecked Sendable {
     public func listItems(feedID: String? = nil, unreadOnly: Bool = false) throws -> [FeedItem] {
         var sql = "SELECT id, feed_id, title, link, summary, published_at, is_read, created_at FROM items"
         var clauses: [String] = []
-        if let feedID { clauses.append("feed_id = '\(escape(feedID))'") }
+        if feedID != nil { clauses.append("feed_id = ?") }
         if unreadOnly { clauses.append("is_read = 0") }
         if !clauses.isEmpty { sql += " WHERE " + clauses.joined(separator: " AND ") }
         sql += " ORDER BY is_read ASC, COALESCE(published_at, created_at) DESC;"
@@ -129,6 +134,9 @@ public final class FeedStore: @unchecked Sendable {
             throw FeedStoreError.prepareFailed(errmsg())
         }
         defer { sqlite3_finalize(stmt) }
+        if let feedID {
+            bindText(stmt, 1, feedID)
+        }
         var rows: [FeedItem] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
             rows.append(item(from: stmt!))
@@ -162,9 +170,9 @@ public final class FeedStore: @unchecked Sendable {
     }
 
     /// Mark every item in a feed (or all feeds when `feedID` is nil) as read.
-    public func markAllRead(feedID: String? = nil) throws {
+        public func markAllRead(feedID: String? = nil) throws {
         if let feedID {
-            try exec("UPDATE items SET is_read = 1 WHERE feed_id = '\(escape(feedID))' AND is_read = 0;")
+            try run("UPDATE items SET is_read = 1 WHERE feed_id = ? AND is_read = 0;", bind: [feedID])
         } else {
             try exec("UPDATE items SET is_read = 1 WHERE is_read = 0;")
         }
@@ -172,8 +180,8 @@ public final class FeedStore: @unchecked Sendable {
 
     public func unreadCount(feedID: String? = nil) throws -> Int {
         var sql = "SELECT COUNT(*) FROM items WHERE is_read = 0"
-        if let feedID {
-            sql += " AND feed_id = '\(escape(feedID))'"
+        if feedID != nil {
+            sql += " AND feed_id = ?"
         }
         sql += ";"
         var stmt: OpaquePointer?
@@ -181,6 +189,9 @@ public final class FeedStore: @unchecked Sendable {
             throw FeedStoreError.prepareFailed(errmsg())
         }
         defer { sqlite3_finalize(stmt) }
+        if let feedID {
+            bindText(stmt, 1, feedID)
+        }
         guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
         return Int(sqlite3_column_int(stmt, 0))
     }
@@ -291,13 +302,24 @@ public final class FeedStore: @unchecked Sendable {
         }
     }
 
+    private func run(_ sql: String, bind values: [String]) throws {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw FeedStoreError.prepareFailed(errmsg())
+        }
+        defer { sqlite3_finalize(stmt) }
+        for (idx, value) in values.enumerated() {
+            bindText(stmt, Int32(idx + 1), value)
+        }
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw FeedStoreError.stepFailed(errmsg())
+        }
+    }
+
     private func errmsg() -> String {
         String(cString: sqlite3_errmsg(db))
     }
 
-    private func escape(_ s: String) -> String {
-        s.replacingOccurrences(of: "'", with: "''")
-    }
 
     private func bindText(_ stmt: OpaquePointer?, _ idx: Int32, _ value: String?) {
         if let value {

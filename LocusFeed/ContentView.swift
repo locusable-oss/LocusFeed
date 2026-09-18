@@ -20,6 +20,7 @@ struct ContentView: View {
                 } label: {
                     Label("Add Feed", systemImage: "plus")
                 }
+                .fixedSize()
 
                 Button {
                     appState.refreshAll()
@@ -31,6 +32,7 @@ struct ContentView: View {
                         Label("Refresh", systemImage: "arrow.clockwise")
                     }
                 }
+                .fixedSize()
                 .disabled(appState.isRefreshing || appState.feeds.isEmpty)
                 .help("Fetch and parse all subscribed feeds")
 
@@ -39,6 +41,7 @@ struct ContentView: View {
                 } label: {
                     Label("Mark Feed Read", systemImage: "checkmark.circle")
                 }
+                .fixedSize()
                 .disabled(appState.selectedFeedID == nil || appState.unreadCount(for: appState.selectedFeedID ?? "") == 0)
                 .help("Mark all items in the selected feed as read")
 
@@ -47,6 +50,7 @@ struct ContentView: View {
                 } label: {
                     Label("Mark All Read", systemImage: "checkmark.circle.fill")
                 }
+                .fixedSize()
                 .disabled(appState.feeds.isEmpty || appState.totalUnread == 0)
                 .help("Mark every item in every feed as read")
 
@@ -57,6 +61,7 @@ struct ContentView: View {
                 } label: {
                     Label("Unread Only", systemImage: appState.unreadOnly ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                 }
+                .fixedSize()
                 .help(appState.unreadOnly ? "Showing unread items. Click to show read items too." : "Hide read items and keep the unread stream dense")
 
                 Button {
@@ -64,6 +69,7 @@ struct ContentView: View {
                 } label: {
                     Label(appState.listDensity.label, systemImage: appState.listDensity == .compact ? "list.dash" : "list.bullet")
                 }
+                .fixedSize()
                 .help(appState.listDensity == .compact ? "Switch to comfortable rows" : "Switch to compact rows")
 
                 Button {
@@ -71,6 +77,7 @@ struct ContentView: View {
                 } label: {
                     Label("Next Unread", systemImage: "arrow.right.circle")
                 }
+                .fixedSize()
                 .disabled(appState.selectedFeedID == nil || appState.unreadCount(for: appState.selectedFeedID ?? "") == 0)
                 .help("Mark the selected item read and move to the next unread (⌘J)")
             }
@@ -111,10 +118,12 @@ private struct FeedSidebar: View {
                             Text(title)
                                 .font(.body.weight(unread > 0 ? .semibold : .medium))
                                 .lineLimit(1)
+                                .truncationMode(.tail)
                             Text(feed.url)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
+                                .truncationMode(.middle)
                         }
                         Spacer(minLength: 0)
                     }
@@ -146,6 +155,7 @@ private struct FeedSidebar: View {
                             .font(.caption.weight(.semibold))
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
+                            .fixedSize()
                             .accessibilityLabel("\(appState.totalUnread) unread")
                     }
                 }
@@ -251,18 +261,23 @@ private struct ItemStreamHeader: View {
             Text(feed.title.isEmpty ? "Untitled feed" : feed.title)
                 .font(.headline)
                 .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
             Spacer(minLength: 8)
             let unread = appState.unreadCount(for: feed.id)
             if unread > 0 {
                 Text("\(unread) unread")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    .fixedSize()
             }
             if let summary = appState.lastRefreshSummary {
                 Text(summary)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
+                    .layoutPriority(-1)
             }
         }
         .padding(.horizontal, 12)
