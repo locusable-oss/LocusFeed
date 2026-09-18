@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import AppKit
 
 /// Detail pane: plain text by default; simple HTML via AttributedString or a sandboxed WKWebView.
 struct ItemDetailView: View {
@@ -39,7 +40,7 @@ struct ItemDetailView: View {
 
                     Divider()
 
-                    ItemBodyView(summary: item.summary)
+                    ItemBodyView(summary: item.summary, fontPoints: appState.bodyFontSize.points)
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -63,25 +64,27 @@ struct ItemDetailView: View {
 
 private struct ItemBodyView: View {
     let summary: String?
+    var fontPoints: Double = BodyFontSize.regular.points
 
     var body: some View {
         let raw = summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if raw.isEmpty {
             Text("No content available for this item.")
+                .font(.system(size: fontPoints))
                 .foregroundStyle(.secondary)
         } else if Self.looksLikeHTML(raw) {
-            if let attributed = Self.htmlAttributed(raw) {
+            if let attributed = Self.htmlAttributed(raw, fontPoints: fontPoints) {
                 Text(attributed)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                SimpleHTMLWebView(html: Self.wrapHTML(raw))
+                SimpleHTMLWebView(html: Self.wrapHTML(raw, fontPoints: fontPoints))
                     .frame(minHeight: 240)
                     .frame(maxWidth: .infinity)
             }
         } else {
             Text(raw)
-                .font(.body)
+                .font(.system(size: fontPoints))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -95,20 +98,36 @@ private struct ItemBodyView: View {
             || lower.contains("<strong") || lower.contains("&lt;") || lower.contains("<html")
     }
 
-    private static func htmlAttributed(_ html: String) -> AttributedString? {
+    private static func htmlAttributed(_ html: String, fontPoints: Double) -> AttributedString? {
         guard let data = html.data(using: .utf8) else { return nil }
         let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
             .documentType: NSAttributedString.DocumentType.html,
             .characterEncoding: String.Encoding.utf8.rawValue,
         ]
-        guard let ns = try? NSAttributedString(data: data, options: options, documentAttributes: nil) else {
+        guard let base = try? NSAttributedString(data: data, options: options, documentAttributes: nil) else {
             return nil
+        }
+        let ns = NSMutableAttributedString(attributedString: base)
+        let range = NSRange(location: 0, length: ns.length)
+        if range.length > 0 {
+            let target = CGFloat(fontPoints)
+            ns.enumerateAttribute(.font, in: range) { value, subrange, _ in
+                let sized: NSFont
+                if let existing = value as? NSFont,
+                   let resized = NSFont(descriptor: existing.fontDescriptor, size: target) {
+                    sized = resized
+                } else {
+                    sized = NSFont.systemFont(ofSize: target)
+                }
+                ns.addAttribute(.font, value: sized, range: subrange)
+            }
         }
         return AttributedString(ns)
     }
 
-    private static func wrapHTML(_ body: String) -> String {
-        """
+    private static func wrapHTML(_ body: String, fontPoints: Double) -> String {
+        let px = Int(fontPoints.rounded())
+        return """
         <!DOCTYPE html>
         <html><head>
         <meta charset="utf-8"/>
@@ -116,6 +135,7 @@ private struct ItemBodyView: View {
         <style>
           :root { color-scheme: light dark; }
           body { font: -apple-system-body; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                 font-size: \(px)px;
                  margin: 0; padding: 0; line-height: 1.45; word-wrap: break-word; }
           img { max-width: 100%; height: auto; }
           a { color: #0a84ff; }

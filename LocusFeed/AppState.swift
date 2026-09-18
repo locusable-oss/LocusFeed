@@ -13,6 +13,8 @@ final class AppState: ObservableObject {
     @Published var isRefreshing = false
     @Published var lastRefreshSummary: String?
     @Published var refreshIntervalMinutes: Int = AppSettings.refreshIntervalMinutes
+    @Published var launchBehavior: LaunchBehavior = AppSettings.launchBehavior
+    @Published var bodyFontSize: BodyFontSize = AppSettings.bodyFontSize
     /// Source-level unread counts. Missing key means zero unread for that feed.
     @Published var unreadByFeed: [String: Int] = [:]
 
@@ -43,6 +45,7 @@ final class AppState: ObservableObject {
             store = try FeedStore()
             reload()
             restartRefreshTimer()
+            applyLaunchBehavior()
         } catch {
             errorMessage = "Store open failed: \(error.localizedDescription)"
         }
@@ -222,6 +225,30 @@ final class AppState: ObservableObject {
         refreshIntervalMinutes = clamped
         AppSettings.refreshIntervalMinutes = clamped
         restartRefreshTimer()
+    }
+
+    func setLaunchBehavior(_ behavior: LaunchBehavior) {
+        launchBehavior = behavior
+        AppSettings.launchBehavior = behavior
+    }
+
+    func setBodyFontSize(_ size: BodyFontSize) {
+        bodyFontSize = size
+        AppSettings.bodyFontSize = size
+    }
+
+    /// Runs only from the production init so tests that inject a store do not fetch the network.
+    private func applyLaunchBehavior() {
+        switch launchBehavior {
+        case .openOnly:
+            break
+        case .refreshOnLaunch:
+            refreshAll()
+        case .focusFirstUnread:
+            if let id = feeds.first(where: { unreadCount(for: $0.id) > 0 })?.id, id != selectedFeedID {
+                selectFeed(id: id)
+            }
+        }
     }
 
     func restartRefreshTimer() {

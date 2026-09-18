@@ -69,6 +69,32 @@ private struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Section("Launch") {
+                Picker("On launch", selection: Binding(
+                    get: { appState.launchBehavior },
+                    set: { appState.setLaunchBehavior($0) }
+                )) {
+                    ForEach(LaunchBehavior.allCases) { behavior in
+                        Text(behavior.label).tag(behavior)
+                    }
+                }
+                Text("Saved for the next launch. Refresh on launch uses the same fetch pipeline as the toolbar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Reading") {
+                Picker("Body size", selection: Binding(
+                    get: { appState.bodyFontSize },
+                    set: { appState.setBodyFontSize($0) }
+                )) {
+                    ForEach(BodyFontSize.allCases) { size in
+                        Text(size.label).tag(size)
+                    }
+                }
+                Text("The quick brown fox reads the feed.")
+                    .font(.system(size: appState.bodyFontSize.points))
+                    .foregroundStyle(.secondary)
+            }
             Section("About") {
                 Text("LocusFeed — unread-first RSS for macOS 15+")
                 Text("GPL-3.0 — Locusable Studio")
@@ -77,6 +103,6 @@ private struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 420, height: 220)
+        .frame(width: 460, height: 460)
     }
 }
