@@ -56,11 +56,33 @@ enum BodyFontSize: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Row height of the unread stream.
+enum ListDensity: String, CaseIterable, Identifiable, Sendable {
+    case compact
+    case comfortable
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .compact: return "Compact"
+        case .comfortable: return "Comfortable"
+        }
+    }
+
+    static func resolve(_ raw: String?) -> ListDensity {
+        guard let raw, let value = ListDensity(rawValue: raw) else { return .comfortable }
+        return value
+    }
+}
+
 /// UserDefaults-backed preferences shared by AppState and Settings UI.
 enum AppSettings {
     static let refreshIntervalMinutesKey = "refreshIntervalMinutes"
     static let launchBehaviorKey = "launchBehavior"
     static let bodyFontSizeKey = "bodyFontSize"
+    static let listDensityKey = "listDensity"
+    static let unreadOnlyKey = "unreadOnly"
 
     /// Minutes between automatic refreshes. `0` disables the timer.
     static var refreshIntervalMinutes: Int {
@@ -83,6 +105,17 @@ enum AppSettings {
     static var bodyFontSize: BodyFontSize {
         get { BodyFontSize.resolve(UserDefaults.standard.string(forKey: bodyFontSizeKey)) }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: bodyFontSizeKey) }
+    }
+
+    static var listDensity: ListDensity {
+        get { ListDensity.resolve(UserDefaults.standard.string(forKey: listDensityKey)) }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: listDensityKey) }
+    }
+
+    /// When true the item list hides already-read rows so the unread stream stays dense.
+    static var unreadOnly: Bool {
+        get { UserDefaults.standard.bool(forKey: unreadOnlyKey) }
+        set { UserDefaults.standard.set(newValue, forKey: unreadOnlyKey) }
     }
 
     static let intervalChoices: [(label: String, minutes: Int)] = [

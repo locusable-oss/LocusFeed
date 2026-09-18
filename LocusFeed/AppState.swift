@@ -15,6 +15,8 @@ final class AppState: ObservableObject {
     @Published var refreshIntervalMinutes: Int = AppSettings.refreshIntervalMinutes
     @Published var launchBehavior: LaunchBehavior = AppSettings.launchBehavior
     @Published var bodyFontSize: BodyFontSize = AppSettings.bodyFontSize
+    @Published var listDensity: ListDensity = AppSettings.listDensity
+    @Published var unreadOnly: Bool = AppSettings.unreadOnly
     /// Source-level unread counts. Missing key means zero unread for that feed.
     @Published var unreadByFeed: [String: Int] = [:]
 
@@ -89,7 +91,7 @@ final class AppState: ObservableObject {
     func reloadItems() {
         guard let store else { return }
         do {
-            items = try store.listItems(feedID: selectedFeedID)
+            items = try store.listItems(feedID: selectedFeedID, unreadOnly: unreadOnly)
             if let selectedItemID, !items.contains(where: { $0.id == selectedItemID }) {
                 self.selectedItemID = items.first?.id
             } else if selectedItemID == nil {
@@ -107,10 +109,16 @@ final class AppState: ObservableObject {
     }
 
     func selectItem(id: FeedItem.ID?) {
-        selectedItemID = id
-        if let id, let item = items.first(where: { $0.id == id }), !item.isRead {
-            setItemRead(id: id, isRead: true)
+        guard let id else {
+            selectedItemID = nil
+            return
         }
+        // A quick-mark that already removed the row can echo a stale selection.
+        guard items.contains(where: { $0.id == id }) else { return }
+        let changed = id != selectedItemID
+        selectedItemID = id
+        guard changed, let item = items.first(where: { $0.id == id }), !item.isRead else { return }
+        setItemRead(id: id, isRead: true)
     }
 
     func addFeed(title: String, url: String, siteURL: String?) {
@@ -150,17 +158,23 @@ final class AppState: ObservableObject {
 
     func setItemRead(id: String, isRead: Bool) {
         guard let store else { return }
+        let successor = nextVisibleID(after: id)
         do {
             try store.setItemRead(id: id, isRead: isRead)
             refreshUnreadCounts()
             if let idx = items.firstIndex(where: { $0.id == id }) {
                 items[idx].isRead = isRead
-                // Keep unread-first ordering in the UI list.
-                items.sort {
-                    if $0.isRead != $1.isRead { return !$0.isRead && $1.isRead }
-                    let a = $0.publishedAt ?? $0.createdAt
-                    let b = $1.publishedAt ?? $1.createdAt
-                    return a > b
+            }
+            if unreadOnly && isRead {
+                items.removeAll { $0.id == id }
+            } else if items.contains(where: { $0.id == id }) {
+                sortVisibleItems()
+            }
+            if let selected = selectedItemID, !items.contains(where: { $0.id == selected }) {
+                if let successor, items.contains(where: { $0.id == successor }) {
+                    selectedItemID = successor
+                } else {
+                    selectedItemID = items.first?.id
                 }
             }
         } catch {
@@ -171,6 +185,63 @@ final class AppState: ObservableObject {
     func toggleItemRead(id: String) {
         guard let item = items.first(where: { $0.id == id }) else { return }
         setItemRead(id: id, isRead: !item.isRead)
+    }
+
+    /// Mark the selection read (if needed) and highlight the next unread item without marking it.
+    func markReadAndAdvance() {
+        guard let current = selectedItemID else {
+            selectedItemID = items.first(where: { !$0.isRead })?.id ?? items.first?.id
+            return
+        }
+        let upcoming = nextUnreadID(after: current)
+        if items.first(where: { $0.id == current })?.isRead == false {
+            setItemRead(id: current, isRead: true)
+        }
+        if let upcoming, items.contains(where: { $0.id == upcoming && !$0.isRead }) {
+            selectedItemID = upcoming
+        }
+    }
+
+    func setListDensity(_ density: ListDensity) {
+        listDensity = density
+        AppSettings.listDensity = density
+    }
+
+    func cycleDensity() {
+        setListDensity(listDensity == .compact ? .comfortable : .compact)
+    }
+
+    func setUnreadOnly(_ flag: Bool) {
+        unreadOnly = flag
+        AppSettings.unreadOnly = flag
+        reloadItems()
+    }
+
+    private func sortVisibleItems() {
+        items.sort {
+            if $0.isRead != $1.isRead { return !$0.isRead && $1.isRead }
+            let a = $0.publishedAt ?? $0.createdAt
+            let b = $1.publishedAt ?? $1.createdAt
+            return a > b
+        }
+    }
+
+    private func nextVisibleID(after id: String) -> String? {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return items.first?.id }
+        let next = items.index(after: idx)
+        if next < items.endIndex { return items[next].id }
+        if idx > items.startIndex { return items[items.index(before: idx)].id }
+        return nil
+    }
+
+    private func nextUnreadID(after id: String) -> String? {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else {
+            return items.first(where: { !$0.isRead })?.id
+        }
+        if let later = items[(idx + 1)...].first(where: { !$0.isRead }) {
+            return later.id
+        }
+        return items[..<idx].first(where: { !$0.isRead })?.id
     }
 
     /// Mark all items in the currently selected feed as read.

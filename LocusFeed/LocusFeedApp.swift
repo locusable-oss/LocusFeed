@@ -41,6 +41,22 @@ struct LocusFeedApp: App {
                     appState.markAllFeedsRead()
                 }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Toggle Item Read") {
+                    if let id = appState.selectedItemID {
+                        appState.toggleItemRead(id: id)
+                    }
+                }
+                .keyboardShortcut("u", modifiers: [.command])
+                .disabled(appState.selectedItemID == nil)
+
+                Button("Mark Read and Next") {
+                    appState.markReadAndAdvance()
+                }
+                .keyboardShortcut("j", modifiers: [.command])
+                .disabled(appState.selectedFeedID == nil)
             }
         }
 
@@ -94,6 +110,21 @@ private struct SettingsView: View {
                 Text("The quick brown fox reads the feed.")
                     .font(.system(size: appState.bodyFontSize.points))
                     .foregroundStyle(.secondary)
+                Picker("List density", selection: Binding(
+                    get: { appState.listDensity },
+                    set: { appState.setListDensity($0) }
+                )) {
+                    ForEach(ListDensity.allCases) { density in
+                        Text(density.label).tag(density)
+                    }
+                }
+                Toggle("Unread only", isOn: Binding(
+                    get: { appState.unreadOnly },
+                    set: { appState.setUnreadOnly($0) }
+                ))
+                Text("Compact hides excerpts. Unread only drops read rows so ⌘J walks the unread stream.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("About") {
                 Text("LocusFeed — unread-first RSS for macOS 15+")
@@ -103,6 +134,6 @@ private struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 460, height: 460)
+        .frame(width: 460, height: 560)
     }
 }
