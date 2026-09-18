@@ -1,5 +1,7 @@
 # LocusFeed
 
+![LocusFeed](docs/icon.png)
+
 Native macOS RSS/Atom client: unread-first feed list, source-level unread counts, one-tap mark-all-read.
 
 GPL-3.0 — Copyright (C) 2026 Locusable Studio.
